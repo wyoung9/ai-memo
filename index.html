@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 메모장</title>
+<style>
+  /* ===== 색상·글자 크기 (여기 값을 바꾸면 전체 분위기가 바뀝니다) ===== */
+  :root {
+    --bg: #f5f6fa; --card: #ffffff; --text: #222; --sub: #6b7280;
+    --main: #4f46e5; --line: #e5e7eb;
+    --high: #dc2626; --mid: #d97706; --low: #6b7280; --event: #2563eb;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Malgun Gothic", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 4px 0 12px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .sub { color: var(--sub); font-size: 13px; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 12px; }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--main); color: #fff; border-color: var(--main); }
+  button.primary:hover { background: #4338ca; }
+  button.danger { color: var(--high); }
+  button.small { padding: 3px 8px; font-size: 13px; }
+  input, select, textarea { font: inherit; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  textarea { min-height: 120px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+  .item { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item:last-child { border-bottom: none; }
+  .item input[type=checkbox] { width: 20px; height: 20px; flex: none; }
+  .done .title { text-decoration: line-through; color: var(--sub); }
+  .badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: #eef; color: var(--main); white-space: nowrap; }
+  .badge.high { background: #fee2e2; color: var(--high); }
+  .badge.mid { background: #fef3c7; color: var(--mid); }
+  .badge.low { background: #f3f4f6; color: var(--low); }
+  .badge.late { background: var(--high); color: #fff; }
+  .empty { color: var(--sub); padding: 8px 0; font-size: 14px; }
+  .rank { width: 26px; height: 26px; border-radius: 50%; background: var(--main); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button { flex: 1; padding: 10px; }
+  .tabs button.active { background: var(--main); color: #fff; border-color: var(--main); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* 캘린더 */
+  .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .dow { text-align: center; font-size: 12px; color: var(--sub); padding: 4px 0; }
+  .day { min-height: 54px; border: 1px solid var(--line); border-radius: 8px; padding: 4px; text-align: left; background: #fff; display: flex; flex-direction: column; justify-content: space-between; }
+  .day.blank { border: none; background: none; cursor: default; }
+  .day.today { border-color: var(--main); font-weight: bold; }
+  .day.sel { background: #eef2ff; border-color: var(--main); }
+  .dots { display: flex; gap: 3px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot.e { background: var(--event); } .dot.t { background: var(--mid); }
+  .sun { color: var(--high); } .sat { color: var(--event); }
+
+  /* 입력창(팝업) */
+  #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  #modal.open { display: flex; }
+  #modal form { background: #fff; border-radius: 12px; padding: 18px; width: 100%; max-width: 420px; max-height: 90vh; overflow: auto; }
+  #modal label { display: block; font-size: 13px; color: var(--sub); margin: 10px 0 4px; }
+  .memo-body { white-space: pre-wrap; color: var(--sub); font-size: 14px; margin: 4px 0 0; }
+  .memo { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .memo:last-child { border-bottom: none; }
+
+  /* ===== 시작 화면 (메모장 느낌) ===== */
+  #splash { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: #7c6f64 radial-gradient(circle at 30% 20%, #8f8176, #6b5f55); transition: opacity .4s; }
+  #splash.hide { opacity: 0; pointer-events: none; }
+  .paper { position: relative; width: 100%; max-width: 380px; background: #fffbe6; border-radius: 6px 6px 10px 10px;
+    padding: 56px 28px 32px 56px; box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 2px 0 #e8dfa8 inset;
+    background-image: repeating-linear-gradient(transparent 0 31px, #cfe0f5 31px 32px); background-position: 0 40px; transform: rotate(-1.2deg); }
+  .paper::before { content: ""; position: absolute; left: 40px; top: 0; bottom: 0; width: 2px; background: #f0a8a8; }   /* 빨간 세로줄 */
+  .spiral { position: absolute; top: -12px; left: 0; right: 0; display: flex; justify-content: space-around; padding: 0 14px; }
+  .spiral i { width: 14px; height: 30px; border-radius: 7px; background: linear-gradient(#e5e7eb, #9ca3af); box-shadow: 0 2px 3px rgba(0,0,0,.35); }
+  .paper h2 { font-size: 30px; margin: 0 0 4px; line-height: 32px; color: #3b3b3b; }
+  .paper p { margin: 0 0 22px; line-height: 32px; color: #6b6b6b; font-size: 15px; }
+  #startBtn { display: block; width: 100%; padding: 14px; font-size: 18px; font-weight: bold; color: #fff; background: var(--main);
+    border: none; border-radius: 10px; box-shadow: 0 4px 0 #3730a3; transition: transform .1s, box-shadow .1s; }
+  #startBtn:hover { background: #4338ca; }
+  #startBtn:active { transform: translateY(4px); box-shadow: 0 0 0 #3730a3; }
+  .pencil { position: absolute; right: -14px; bottom: 70px; font-size: 38px; transform: rotate(20deg); }
+</style>
+</head>
+<body>
+<!-- 시작 화면 -->
+<div id="splash">
+  <div class="paper">
+    <div class="spiral"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <h2>📝 AI 메모장</h2>
+    <p>오늘 할 일, 일정, 메모를<br>한곳에서 가볍게 시작해요.</p>
+    <button id="startBtn">시작하기 ✏️</button>
+    <span class="pencil">✏️</span>
+  </div>
+</div>
+<div class="wrap">
+  <h1>📝 AI 메모장</h1>
+
+  <!-- ===== 첫 화면: 우선순위 먼저 ===== -->
+  <section class="card">
+    <h2>🔥 오늘 먼저 할 일 TOP 3</h2>
+    <div id="homeTop"></div>
+  </section>
+  <section class="card">
+    <h2>📅 오늘 일정 <span class="sub" id="homeDate"></span></h2>
+    <div id="homeEvents"></div>
+  </section>
+
+  <!-- ===== 탭 ===== -->
+  <div class="tabs">
+    <button data-act="tab" data-tab="cal" class="active">캘린더</button>
+    <button data-act="tab" data-tab="memo">메모</button>
+    <button data-act="tab" data-tab="todo">할 일</button>
+  </div>
+
+  <!-- 캘린더 -->
+  <section class="panel active card" id="panel-cal">
+    <div class="cal-head">
+      <button data-act="prev">◀</button>
+      <strong id="calTitle"></strong>
+      <span class="row"><button data-act="thisMonth" class="small">오늘</button><button data-act="next">▶</button></span>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+    <div class="row" style="justify-content:space-between">
+      <h2 id="dayTitle" style="margin:0"></h2>
+      <span class="row">
+        <button class="small primary" data-act="add-event">+ 일정</button>
+        <button class="small primary" data-act="add-todo-day">+ 할 일</button>
+      </span>
+    </div>
+    <div id="dayList"></div>
+  </section>
+
+  <!-- 메모 -->
+  <section class="panel card" id="panel-memo">
+    <div class="row" style="margin-bottom:8px">
+      <input class="grow" id="memoSearch" placeholder="🔍 메모 검색 (제목·내용)">
+      <button class="primary" data-act="add-memo">+ 새 메모</button>
+    </div>
+    <div id="memoList"></div>
+  </section>
+
+  <!-- 할 일 -->
+  <section class="panel card" id="panel-todo">
+    <div class="row" style="margin-bottom:8px; justify-content:space-between">
+      <span class="row" id="filters">
+        <button class="small" data-act="filter" data-f="today">오늘</button>
+        <button class="small" data-act="filter" data-f="all">전체</button>
+        <button class="small" data-act="filter" data-f="done">완료</button>
+      </span>
+      <button class="primary" data-act="add-todo">+ 새 할 일</button>
+    </div>
+    <div id="todoList"></div>
+  </section>
+
+  <p class="sub">데이터는 이 브라우저에만 저장돼요. 다른 기기와는 공유되지 않습니다. 주민번호·계좌번호·비밀번호는 적지 마세요.</p>
+</div>
+
+<!-- 입력 팝업 -->
+<div id="modal"><form id="form"></form></div>
+
+<script>
+/* ===== 1. 데이터 저장/불러오기 (브라우저 localStorage) ===== */
+const KEY = "aiMemoApp.v1";
+let db = { memos: [], todos: [], events: [], seq: 1 };
+try { const s = localStorage.getItem(KEY); if (s) db = Object.assign(db, JSON.parse(s)); } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { alert("저장에 실패했어요. 브라우저 저장 공간을 확인해 주세요."); } }
+const newId = () => db.seq++;
+
+/* ===== 2. 날짜 도우미 ===== */
+const pad = n => String(n).padStart(2, "0");
+const ymd = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const todayStr = () => { const t = new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); };
+const toDate = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const daysFromToday = s => Math.round((toDate(s) - toDate(todayStr())) / 86400000);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = id => document.getElementById(id);
+
+/* ===== 3. 우선순위 규칙 (PRD 4-4) =====
+   1) 마감일이 가까운 것  2) 중요도 높음>보통>낮음  3) 먼저 입력한 것 */
+const RANK = { high: 0, mid: 1, low: 2 };
+const PNAME = { high: "높음", mid: "보통", low: "낮음" };
+function byPriority(a, b) {
+  const da = a.due || "9999-12-31", dbb = b.due || "9999-12-31";
+  if (da !== dbb) return da < dbb ? -1 : 1;
+  if (RANK[a.priority] !== RANK[b.priority]) return RANK[a.priority] - RANK[b.priority];
+  return a.id - b.id;
+}
+
+/* ===== 4. 화면 상태 ===== */
+let curTab = "cal", filter = "today", selDate = todayStr();
+const t0 = new Date(); let calY = t0.getFullYear(), calM = t0.getMonth();
+
+/* ===== 5. 화면 그리기 ===== */
+function dueBadge(due) {
+  if (!due) return "";
+  const n = daysFromToday(due);
+  if (n < 0) return `<span class="badge late">${-n}일 지남</span>`;
+  if (n === 0) return `<span class="badge late">오늘 마감</span>`;
+  return `<span class="badge">D-${n} (${due.slice(5)})</span>`;
+}
+function todoRow(t, showRank) {
+  return `<div class="item ${t.done ? "done" : ""}">
+    ${showRank ? `<div class="rank">${showRank}</div>` : `<input type="checkbox" data-act="toggle" data-id="${t.id}" ${t.done ? "checked" : ""}>`}
+    <div class="grow"><div class="title">${esc(t.title)}</div>
+      <div class="row">${dueBadge(t.due)}<span class="badge ${t.priority}">${PNAME[t.priority]}</span></div></div>
+    ${showRank ? `<input type="checkbox" title="완료" data-act="toggle" data-id="${t.id}">` :
+      `<button class="small" data-act="edit-todo" data-id="${t.id}">수정</button><button class="small danger" data-act="del-todo" data-id="${t.id}">삭제</button>`}
+  </div>`;
+}
+function eventRow(e) {
+  return `<div class="item">
+    <span class="badge" style="background:#dbeafe;color:var(--event)">${e.time || "종일"}</span>
+    <div class="grow title">${esc(e.title)}</div>
+    <button class="small" data-act="edit-event" data-id="${e.id}">수정</button>
+    <button class="small danger" data-act="del-event" data-id="${e.id}">삭제</button></div>`;
+}
+const eventsOn = d => db.events.filter(e => e.date === d).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+
+function renderHome() {
+  const top = db.todos.filter(t => !t.done).sort(byPriority).slice(0, 3);
+  $("homeTop").innerHTML = top.length ? top.map((t, i) => todoRow(t, i + 1)).join("") : `<div class="empty">할 일이 없어요. 아래 '할 일' 탭에서 추가해 보세요.</div>`;
+  const td = todayStr(), d = toDate(td);
+  $("homeDate").textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 (${"일월화수목금토"[d.getDay()]})`;
+  const ev = eventsOn(td);
+  $("homeEvents").innerHTML = ev.length ? ev.map(eventRow).join("") : `<div class="empty">오늘 일정이 없어요.</div>`;
+}
+function renderCal() {
+  $("calTitle").textContent = `${calY}년 ${calM + 1}월`;
+  let h = "일월화수목금토".split("").map((c, i) => `<div class="dow ${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${c}</div>`).join("");
+  const first = new Date(calY, calM, 1).getDay(), last = new Date(calY, calM + 1, 0).getDate(), td = todayStr();
+  for (let i = 0; i < first; i++) h += `<div class="day blank"></div>`;
+  for (let d = 1; d <= last; d++) {
+    const s = ymd(calY, calM, d);
+    const hasE = db.events.some(e => e.date === s), hasT = db.todos.some(t => t.due === s && !t.done);
+    h += `<button class="day ${s === td ? "today" : ""} ${s === selDate ? "sel" : ""}" data-act="day" data-date="${s}">
+      <span>${d}</span><span class="dots">${hasE ? '<i class="dot e"></i>' : ""}${hasT ? '<i class="dot t"></i>' : ""}</span></button>`;
+  }
+  $("calGrid").innerHTML = h;
+  const sd = toDate(selDate);
+  $("dayTitle").textContent = `${sd.getMonth() + 1}월 ${sd.getDate()}일 (${"일월화수목금토"[sd.getDay()]})`;
+  const ev = eventsOn(selDate), tds = db.todos.filter(t => t.due === selDate).sort(byPriority);
+  $("dayList").innerHTML = (ev.length || tds.length)
+    ? ev.map(eventRow).join("") + tds.map(t => todoRow(t)).join("")
+    : `<div class="empty">이 날은 일정·할 일이 없어요. (파란 점 = 일정, 주황 점 = 할 일 마감)</div>`;
+}
+function renderMemos() {
+  const q = $("memoSearch").value.trim().toLowerCase();
+  const list = db.memos.filter(m => !q || m.title.toLowerCase().includes(q) || m.body.toLowerCase().includes(q)).sort((a, b) => b.updated - a.updated);
+  $("memoList").innerHTML = list.length ? list.map(m => `<div class="memo">
+      <div class="row"><strong class="grow">${esc(m.title)}</strong>
+        <span class="sub">${new Date(m.updated).toLocaleDateString("ko-KR")}</span>
+        <button class="small" data-act="edit-memo" data-id="${m.id}">수정</button>
+        <button class="small danger" data-act="del-memo" data-id="${m.id}">삭제</button></div>
+      <div class="memo-body">${esc(m.body)}</div></div>`).join("")
+    : `<div class="empty">${q ? "검색 결과가 없어요." : "메모가 없어요. '+ 새 메모'를 눌러 보세요."}</div>`;
+}
+function renderTodos() {
+  const td = todayStr();
+  document.querySelectorAll("#filters button").forEach(b => b.classList.toggle("primary", b.dataset.f === filter));
+  let list = db.todos.slice();
+  if (filter === "today") list = list.filter(t => !t.done && t.due && t.due <= td);
+  else if (filter === "done") list = list.filter(t => t.done);
+  list.sort((a, b) => (a.done - b.done) || byPriority(a, b));
+  $("todoList").innerHTML = list.length ? list.map(t => todoRow(t)).join("")
+    : `<div class="empty">${filter === "today" ? "오늘까지 마감인 할 일이 없어요." : filter === "done" ? "완료한 할 일이 없어요." : "할 일이 없어요."}</div>`;
+}
+function renderAll() {
+  renderHome(); renderCal(); renderMemos(); renderTodos();
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === curTab));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + curTab));
+}
+
+/* ===== 6. 입력/수정 팝업 ===== */
+const FIELDS = {
+  memo:  [["title", "제목", "text", true], ["body", "내용", "textarea"]],
+  todo:  [["title", "할 일", "text", true], ["due", "마감일", "date"], ["priority", "중요도", "select"]],
+  event: [["title", "일정 제목", "text", true], ["date", "날짜", "date", true], ["time", "시간 (비우면 종일)", "time"]]
+};
+const NAMES = { memo: "메모", todo: "할 일", event: "일정" };
+function openForm(type, item) {
+  const isNew = !item.id;
+  let h = `<h2>${NAMES[type]} ${isNew ? "추가" : "수정"}</h2>`;
+  for (const [k, label, kind, req] of FIELDS[type]) {
+    const v = esc(item[k] ?? "");
+    h += `<label>${label}${req ? " *" : ""}</label>`;
+    if (kind === "textarea") h += `<textarea name="${k}">${v}</textarea>`;
+    else if (kind === "select") h += `<select name="${k}">${Object.keys(PNAME).map(p => `<option value="${p}" ${item[k] === p ? "selected" : ""}>${PNAME[p]}</option>`).join("")}</select>`;
+    else h += `<input name="${k}" type="${kind}" value="${v}" ${req ? "required" : ""}>`;
+  }
+  h += `<div class="row" style="margin-top:16px;justify-content:flex-end"><button type="button" data-act="cancel">취소</button><button class="primary" type="submit">저장</button></div>`;
+  $("form").innerHTML = h;
+  $("form").onsubmit = ev => {
+    ev.preventDefault();
+    const data = Object.fromEntries(new FormData($("form")));
+    data.title = (data.title || "").trim();
+    if (!data.title) return;
+    if (type === "memo") {
+      if (isNew) db.memos.push({ id: newId(), title: data.title, body: data.body || "", updated: Date.now() });
+      else Object.assign(item, { title: data.title, body: data.body || "", updated: Date.now() });
+    } else if (type === "todo") {
+      if (isNew) db.todos.push({ id: newId(), title: data.title, due: data.due || "", priority: data.priority, done: false });
+      else Object.assign(item, { title: data.title, due: data.due || "", priority: data.priority });
+    } else {
+      if (isNew) db.events.push({ id: newId(), title: data.title, date: data.date, time: data.time || "" });
+      else Object.assign(item, { title: data.title, date: data.date, time: data.time || "" });
+    }
+    save(); closeForm(); renderAll();
+  };
+  $("modal").classList.add("open");
+  const f = $("form").querySelector("input,textarea"); if (f) f.focus();
+}
+const closeForm = () => $("modal").classList.remove("open");
+
+/* ===== 7. 버튼 클릭 처리 ===== */
+const find = (arr, id) => arr.find(x => x.id === Number(id));
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const act = b.dataset.act, id = b.dataset.id;
+  if (act === "tab") { curTab = b.dataset.tab; }
+  else if (act === "prev") { calM--; if (calM < 0) { calM = 11; calY--; } }
+  else if (act === "next") { calM++; if (calM > 11) { calM = 0; calY++; } }
+  else if (act === "thisMonth") { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); selDate = todayStr(); }
+  else if (act === "day") { selDate = b.dataset.date; }
+  else if (act === "filter") { filter = b.dataset.f; }
+  else if (act === "cancel") { closeForm(); return; }
+  else if (act === "add-memo") { openForm("memo", {}); return; }
+  else if (act === "add-todo") { openForm("todo", { priority: "mid" }); return; }
+  else if (act === "add-todo-day") { openForm("todo", { priority: "mid", due: selDate }); return; }
+  else if (act === "add-event") { openForm("event", { date: selDate }); return; }
+  else if (act === "edit-memo") { openForm("memo", find(db.memos, id)); return; }
+  else if (act === "edit-todo") { openForm("todo", find(db.todos, id)); return; }
+  else if (act === "edit-event") { openForm("event", find(db.events, id)); return; }
+  else if (act === "toggle") { const t = find(db.todos, id); t.done = !t.done; save(); }
+  else if (act.startsWith("del-")) {
+    const key = { "del-memo": "memos", "del-todo": "todos", "del-event": "events" }[act];
+    if (!confirm("정말 삭제할까요? 되돌릴 수 없어요.")) return;
+    db[key] = db[key].filter(x => x.id !== Number(id)); save();
+  }
+  renderAll();
+});
+$("memoSearch").addEventListener("input", renderMemos);
+$("modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeForm(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeForm(); });
+
+renderAll();
+
+/* 시작 버튼: 누르면 시작 화면이 사라지고 메모장이 보임 */
+$("startBtn").addEventListener("click", () => {
+  $("splash").classList.add("hide");
+  setTimeout(() => $("splash").remove(), 450);
+});
+$("startBtn").focus();
+</script>
+</body>
+</html>
